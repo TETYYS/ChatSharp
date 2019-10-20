@@ -16,9 +16,10 @@ namespace ChatSharp.Handlers
             if (channel != null)
             {
                 if (!user.Channels.Contains(channel))
+                {
+                    client.CompleteNamedEvent("channel_" + channel.Name);
                     user.Channels.Add(channel);
-
-                Console.WriteLine("JOIN " + channel);
+                }
 
                 // account-notify capability
                 if (client.Capabilities.IsEnabled("account-notify"))
@@ -137,7 +138,13 @@ namespace ChatSharp.Handlers
 
         public static async ValueTask HandleUserListEnd(IrcClient client, IrcMessage message)
         {
-            Console.WriteLine("USERLIST " + message.Parameters[1]);
+            await client.WaitForNamedEvent("channel_" + message.Parameters[1]);
+
+            if (!client.Channels.Contains(message.Parameters[1]))
+            {
+                return;
+            }
+
             var channel = client.Channels[message.Parameters[1]];
             client.OnChannelListRecieved(new ChannelEventArgs(channel));
             if (client.Settings.ModeOnJoin)

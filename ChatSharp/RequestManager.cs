@@ -37,8 +37,8 @@ namespace ChatSharp
         public void CompleteOperation(string key)
         {
             var operation = PendingOperations[key];
-            operation.Ev.Set();
             PendingOperations.Remove(key);
+            operation.Ev.Set();
         }
 
         internal class RequestOperation

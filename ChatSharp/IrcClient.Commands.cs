@@ -84,6 +84,8 @@ namespace ChatSharp
             if (!string.IsNullOrEmpty(key))
                 joinCmd += string.Format(" {0}", key);
 
+            this.AddNamedEvent("channel_" + channel);
+
             await SendRawMessage(joinCmd, channel);
 
             // account-notify capability

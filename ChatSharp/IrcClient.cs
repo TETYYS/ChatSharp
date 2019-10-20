@@ -1,5 +1,6 @@
 using ChatSharp.Events;
 using ChatSharp.Handlers;
+using Nito.AsyncEx;
 using System;
 using System.Buffers;
 using System.Collections.Concurrent;
@@ -9,6 +10,7 @@ using System.IO.Pipelines;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
 
@@ -49,7 +51,7 @@ namespace ChatSharp
         internal static Random RandomNumber { get; private set; }
         private string ServerHostname { get; set; }
         private int ServerPort { get; set; }
-        private Timer PingTimer { get; set; }
+        private System.Timers.Timer PingTimer { get; set; }
         private TcpClient TcpClient { get; set; }
 
         internal RequestManager RequestManager { get; set; }
@@ -144,6 +146,9 @@ namespace ChatSharp
 
         private Pipe Pipe { get; set; }
 
+        public object NamedEventsLock = new object();
+        public Dictionary<string, AsyncManualResetEvent> NamedEvents { get; internal set; } = new Dictionary<string, AsyncManualResetEvent>();
+
         /// <summary>
         /// Creates a new IRC client, but will not connect until ConnectAsync is called.
         /// </summary>
@@ -183,6 +188,56 @@ namespace ChatSharp
             RandomNumber = new Random();
         }
 
+        public async ValueTask WaitForNamedEvent(string Name)
+        {
+            AsyncManualResetEvent ev;
+            lock (NamedEventsLock)
+            {
+                if (!NamedEvents.TryGetValue(Name, out ev))
+                {
+                    NamedEvents[Name] = ev = new AsyncManualResetEvent(false);
+                }
+            }
+            var cancellation = new CancellationTokenSource();
+            var task = ev.WaitAsync(cancellation.Token);
+            await Task.WhenAny(Task.Delay(TimeSpan.FromMinutes(1)), task);
+            cancellation.Cancel();
+        }
+
+        public void AddNamedEvent(string Name)
+        {
+            AsyncManualResetEvent ev;
+            lock (NamedEventsLock)
+            {
+                if (!NamedEvents.TryGetValue(Name, out ev))
+                {
+                    ev = new AsyncManualResetEvent(false);
+                    NamedEvents[Name] = ev;
+                }
+            }
+
+            Task.Run(async () =>
+            {
+                await Task.Delay(TimeSpan.FromMinutes(1));
+                ev.Set();
+                lock (NamedEventsLock)
+                {
+                    NamedEvents.Remove(Name);
+                }
+            });
+        }
+
+        public void CompleteNamedEvent(string Name)
+        {
+            lock (NamedEventsLock)
+            {
+                if (NamedEvents.TryGetValue(Name, out var ev))
+                {
+                    ev.Set();
+                }
+            }
+        }
+
         /// <summary>
         /// Connects to the IRC server.
         /// </summary>
@@ -190,7 +245,7 @@ namespace ChatSharp
         {
             if (TcpClient != null && TcpClient.Connected) throw new InvalidOperationException("Socket is already connected to server.");
             TcpClient = new TcpClient();
-            PingTimer = new Timer(30000);
+            PingTimer = new System.Timers.Timer(30000);
             PingTimer.Elapsed += async (sender, e) => 
             {
                 if (!string.IsNullOrEmpty(ServerNameFromPing))
