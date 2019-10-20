@@ -31,13 +31,13 @@ namespace ChatSharp
         /// <summary>
         /// Sends a CTCP action (i.e. "* SirCmpwn waves hello") to one or more destinations.
         /// </summary>
-        public async ValueTask SendAction(string message, params string[] destinations)
+        public void SendAction(string message, params string[] destinations)
         {
             const string illegalCharacters = "\r\n\0";
             if (destinations == null || !destinations.Any()) throw new InvalidOperationException("Message must have at least one target.");
             if (illegalCharacters.Any(message.Contains)) throw new ArgumentException("Illegal characters are present in message.", "message");
             string to = string.Join(",", destinations);
-            await SendRawMessage("PRIVMSG {0} :\x0001ACTION {1}{2}\x0001", to, PrivmsgPrefix, message);
+            _ = SendRawMessage("PRIVMSG {0} :\x0001ACTION {1}{2}\x0001", to, PrivmsgPrefix, message);
         }
 
         /// <summary>
