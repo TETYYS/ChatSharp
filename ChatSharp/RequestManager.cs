@@ -1,6 +1,8 @@
+using Nito.AsyncEx;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace ChatSharp
 {
@@ -13,36 +15,42 @@ namespace ChatSharp
 
         internal Dictionary<string, RequestOperation> PendingOperations { get; private set; }
 
-        public void QueueOperation(string key, RequestOperation operation)
+        public async ValueTask ExecuteOperation(string key, object State)
         {
-            if (PendingOperations.ContainsKey(key))
-                throw new InvalidOperationException("Operation is already pending.");
-            PendingOperations.Add(key, operation);
+            RequestOperation req;
+            if (PendingOperations.TryGetValue(key, out req))
+            {
+                await req.Ev.WaitAsync();
+            }
+
+            PendingOperations.Add(key, req = new RequestOperation(State));
+
+            await req.Ev.WaitAsync();
         }
 
-        public RequestOperation PeekOperation(string key)
+        public object GetState(string key)
         {
             var realKey = PendingOperations.Keys.FirstOrDefault(k => string.Equals(k, key, StringComparison.OrdinalIgnoreCase));
             return PendingOperations[realKey];
         }
 
-        public RequestOperation DequeueOperation(string key)
+        public void CompleteOperation(string key)
         {
             var operation = PendingOperations[key];
+            operation.Ev.Set();
             PendingOperations.Remove(key);
-            return operation;
         }
-    }
 
-    internal class RequestOperation
-    {
-        public object State { get; set; }
-        public Action<RequestOperation> Callback { get; set; }
-
-        public RequestOperation(object state, Action<RequestOperation> callback)
+        internal class RequestOperation
         {
-            State = state;
-            Callback = callback;
+            public object State { get; set; }
+            public AsyncManualResetEvent Ev { get; set; }
+
+            public RequestOperation(object state)
+            {
+                State = state;
+                Ev = new AsyncManualResetEvent(false);
+            }
         }
     }
 }

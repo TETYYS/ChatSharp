@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace ChatSharp
 {
@@ -22,7 +23,7 @@ namespace ChatSharp
             }
             set
             {
-                Client.SetTopic(Name, value);
+                _ = Client.SetTopic(Name, value);
                 _Topic = value;
             }
         }
@@ -55,58 +56,37 @@ namespace ChatSharp
         /// <summary>
         /// Invites a user to this channel.
         /// </summary>
-        public void Invite(string nick)
-        {
-            Client.InviteUser(Name, nick);
-        }
+        public ValueTask Invite(string nick) => Client.InviteUser(Name, nick);
 
         /// <summary>
         /// Kicks a user from this channel.
         /// </summary>
-        public void Kick(string nick)
-        {
-            Client.KickUser(Name, nick);
-        }
+        public ValueTask Kick(string nick) => Client.KickUser(Name, nick);
 
         /// <summary>
         /// Kicks a user from this channel, giving a reason for the kick.
         /// </summary>
-        public void Kick(string nick, string reason)
-        {
-            Client.KickUser(Name, nick, reason);
-        }
+        public ValueTask Kick(string nick, string reason) => Client.KickUser(Name, nick, reason);
 
         /// <summary>
         /// Parts this channel.
         /// </summary>
-        public void Part()
-        {
-            Client.PartChannel(Name);
-        }
+        public ValueTask Part() => Client.PartChannel(Name);
 
         /// <summary>
         /// Parts this channel, giving a reason for your departure.
         /// </summary>
-        public void Part(string reason)
-        {
-            Client.PartChannel(Name, reason);
-        }
+        public ValueTask Part(string reason) => Client.PartChannel(Name, reason);
 
         /// <summary>
         /// Sends a PRIVMSG to this channel.
         /// </summary>
-        public void SendMessage(string message)
-        {
-            Client.SendMessage(message, Name);
-        }
+        public void SendMessage(string message) => Client.SendMessage(message, Name);
 
         /// <summary>
         /// Set the channel mode.
         /// </summary>
-        public void ChangeMode(string change)
-        {
-            Client.ChangeMode(Name, change);
-        }
+        public ValueTask ChangeMode(string change) => Client.ChangeMode(Name, change);
 
         /// <summary>
         /// True if this channel is equal to another (compares names).

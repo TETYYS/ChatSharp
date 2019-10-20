@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace ChatSharp
 {
@@ -38,10 +39,10 @@ namespace ChatSharp
         /// <summary>
         /// Join the specified channel. Only applicable for your own user.
         /// </summary>
-        public void Join(string name)
+        public async ValueTask Join(string name)
         {
             if (Client != null)
-                Client.JoinChannel(name);
+                await Client.JoinChannel(name);
             else
                 throw new InvalidOperationException("Cannot make other users join channels.");
         }

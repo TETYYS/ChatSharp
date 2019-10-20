@@ -2,12 +2,13 @@
 using System.Collections.Generic;
 using System.Text;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace ChatSharp.Handlers
 {
     internal static class SaslHandlers
     {
-        public static void HandleAuthentication(IrcClient client, IrcMessage message)
+        public static async ValueTask HandleAuthentication(IrcClient client, IrcMessage message)
         {
             if (client.IsAuthenticatingSasl)
             {
@@ -21,23 +22,23 @@ namespace ChatSharp.Handlers
                     {
                         var chunk = b64Bytes.Take(400).ToArray();
                         b64Bytes = b64Bytes.Skip(400).ToArray();
-                        client.SendRawMessage(string.Format("AUTHENTICATE {0}", Encoding.UTF8.GetString(chunk)));
+                        await client.SendRawMessage(string.Format("AUTHENTICATE {0}", Encoding.UTF8.GetString(chunk)));
                     }
                     if (b64Bytes.Length > 0)
-                        client.SendRawMessage(string.Format("AUTHENTICATE {0}", Encoding.UTF8.GetString(b64Bytes)));
+                        await client.SendRawMessage(string.Format("AUTHENTICATE {0}", Encoding.UTF8.GetString(b64Bytes)));
                     else
-                        client.SendRawMessage("AUTHENTICATE +");
+                        await client.SendRawMessage("AUTHENTICATE +");
 
                     client.IsAuthenticatingSasl = false;
                 }
             }
         }
 
-        public static void HandleError(IrcClient client, IrcMessage message)
+        public static async ValueTask HandleError(IrcClient client, IrcMessage message)
         {
             if (client.IsNegotiatingCapabilities && !client.IsAuthenticatingSasl)
             {
-                client.SendRawMessage("CAP END");
+                await client.SendRawMessage("CAP END");
                 client.IsNegotiatingCapabilities = false;
             }
         }

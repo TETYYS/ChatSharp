@@ -1,9 +1,11 @@
 using ChatSharp.Events;
 using ChatSharp.Handlers;
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Pipelines;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Text;
@@ -20,7 +22,7 @@ namespace ChatSharp
         /// <summary>
         /// A raw IRC message handler.
         /// </summary>
-        public delegate void MessageHandler(IrcClient client, IrcMessage message);
+        public delegate ValueTask MessageHandler(IrcClient client, IrcMessage message);
         private Dictionary<string, MessageHandler> Handlers { get; set; }
 
         /// <summary>
@@ -45,11 +47,6 @@ namespace ChatSharp
         }
 
         internal static Random RandomNumber { get; private set; }
-
-        private const int ReadBufferLength = 1024;
-
-        private byte[] ReadBuffer { get; set; }
-        private int ReadBufferIndex { get; set; }
         private string ServerHostname { get; set; }
         private int ServerPort { get; set; }
         private Timer PingTimer { get; set; }
@@ -143,6 +140,10 @@ namespace ChatSharp
         /// </summary>
         public bool IsAuthenticatingSasl { get; internal set; }
 
+        private Task StreamReader { get; set; }
+
+        private Pipe Pipe { get; set; }
+
         /// <summary>
         /// Creates a new IRC client, but will not connect until ConnectAsync is called.
         /// </summary>
@@ -189,13 +190,11 @@ namespace ChatSharp
         {
             if (TcpClient != null && TcpClient.Connected) throw new InvalidOperationException("Socket is already connected to server.");
             TcpClient = new TcpClient();
-            ReadBuffer = new byte[ReadBufferLength];
-            ReadBufferIndex = 0;
             PingTimer = new Timer(30000);
-            PingTimer.Elapsed += (sender, e) => 
+            PingTimer.Elapsed += async (sender, e) => 
             {
                 if (!string.IsNullOrEmpty(ServerNameFromPing))
-                    SendRawMessage("PING :{0}", ServerNameFromPing);
+                    await SendRawMessage("PING :{0}", ServerNameFromPing);
             };
             await TcpClient.ConnectAsync(ServerHostname, ServerPort);
 
@@ -211,15 +210,17 @@ namespace ChatSharp
                     ((SslStream)NetworkStream).AuthenticateAsClient(ServerHostname);
                 }
 
-                NetworkStream.BeginRead(ReadBuffer, ReadBufferIndex, ReadBuffer.Length, DataRecieved, null);
+                Pipe = new Pipe();
+                StreamReader = Task.WhenAll(FillPipe(), ReadPipe());
+
                 // Begin capability negotiation
-                SendRawMessage("CAP LS 302");
+                await SendRawMessage("CAP LS 302");
                 // Write login info
                 if (AuthenticateLegacy && !string.IsNullOrEmpty(User.Password))
-                    SendRawMessage("PASS {0}", User.Password);
-                SendRawMessage("NICK {0}", User.Nick);
+                    await SendRawMessage("PASS {0}", User.Password);
+                await SendRawMessage("NICK {0}", User.Nick);
                 // hostname, servername are ignored by most IRC servers
-                SendRawMessage("USER {0} hostname servername :{1}", User.User, User.RealName);
+                await SendRawMessage("USER {0} hostname servername :{1}", User.User, User.RealName);
                 PingTimer.Start();
             }
             catch (SocketException e)
@@ -235,74 +236,143 @@ namespace ChatSharp
         /// <summary>
         /// Send a QUIT message and disconnect.
         /// </summary>
-        public void Quit()
-        {
-            Quit(null);
-        }
+        public ValueTask Quit() => Quit(null);
 
         /// <summary>
         /// Send a QUIT message with a reason and disconnect.
         /// </summary>
-        public void Quit(string reason)
+        public async ValueTask Quit(string reason)
         {
             if (reason == null)
-                SendRawMessage("QUIT");
+                await SendRawMessage("QUIT");
             else
-                SendRawMessage("QUIT :{0}", reason);
+                await SendRawMessage("QUIT :{0}", reason);
 
             try { TcpClient.Close(); } catch { }
             TcpClient.Dispose();
             TcpClient = null;
 
+            StreamReader = null;
+            try { Pipe.Writer.Complete(); } catch { }
+            try { Pipe.Reader.Complete(); } catch { }
+            Pipe = null;
+
             PingTimer.Dispose();
         }
 
-        private void DataRecieved(IAsyncResult result)
+        private async Task FillPipe()
         {
-            if (NetworkStream == null)
-            {
-                OnNetworkError(new SocketErrorEventArgs(SocketError.NotConnected));
-                return;
-            }
+            const int minimumBufferSize = 512;
 
-            int length;
-            try
+            while (true)
             {
-                length = NetworkStream.EndRead(result) + ReadBufferIndex;
-            }
-            catch (IOException e)
-            {
-                if (e.InnerException is SocketException socketException)
-                    OnNetworkError(new SocketErrorEventArgs(socketException.SocketErrorCode));
-                else
-                    throw;
-                return;
-            }
-
-            ReadBufferIndex = 0;
-            while (length > 0)
-            {
-                int messageLength = Array.IndexOf(ReadBuffer, (byte)'\n', 0, length);
-                if (messageLength == -1) // Incomplete message
+                var memory = Pipe.Writer.GetMemory(minimumBufferSize);
+                try
                 {
-                    ReadBufferIndex = length;
+                    int bytesRead = await NetworkStream.ReadAsync(memory);
+                    if (bytesRead == 0)
+                    {
+                        OnNetworkError(new SocketErrorEventArgs(SocketError.NotConnected));
+                        return;
+                    }
+                    Pipe.Writer.Advance(bytesRead);
+                }
+                catch (IOException ex)
+                {
+                    if (ex.InnerException is SocketException socketException)
+                        OnNetworkError(new SocketErrorEventArgs(socketException.SocketErrorCode));
+                    else
+                        throw;
+                }
+
+                var result = await Pipe.Writer.FlushAsync();
+
+                if (result.IsCompleted)
+                {
                     break;
                 }
-                messageLength++;
-                var message = Encoding.GetString(ReadBuffer, 0, messageLength - 2); // -2 to remove \r\n
-                HandleMessage(message);
-                Array.Copy(ReadBuffer, messageLength, ReadBuffer, 0, length - messageLength);
-                length -= messageLength;
             }
-            NetworkStream.BeginRead(ReadBuffer, ReadBufferIndex, ReadBuffer.Length - ReadBufferIndex, DataRecieved, null);
+
+            Pipe.Writer.Complete();
         }
 
-        private void HandleMessage(string rawMessage)
+        private async Task ReadPipe()
+        {
+            while (true)
+            {
+                var result = await Pipe.Reader.ReadAsync();
+
+                var buffer = result.Buffer;
+                SequencePosition? position;
+                do
+                {
+                    // Look for a EOL in the buffer
+                    position = buffer.PositionOf((byte)'\n');
+
+                    if (position != null)
+                    {
+                        var buffSlice = buffer.Slice(0, position.Value);
+                        string msg;
+
+                        if (buffSlice.IsSingleSegment)
+                        {
+                            if (buffSlice.First.Span[^1] == (byte)'\r')
+                                msg = Encoding.UTF8.GetString(buffSlice.First.Span.Slice(0, buffSlice.First.Span.Length - 1));
+                            else
+                                msg = Encoding.UTF8.GetString(buffSlice.First.Span);
+                        }
+                        else
+                        {
+                            var len = (int)buffSlice.Length;
+
+                            var pos = buffSlice.GetPosition(buffSlice.Length - 1);
+                            ReadOnlyMemory<byte> byt = new byte[1];
+                            buffSlice.TryGet(ref pos, out byt, false);
+
+                            if (byt.Span[0] == (byte)'\r')
+                            {
+                                len--;
+                                buffSlice = buffSlice.Slice(0, len);
+                            }
+
+                            msg = String.Create(len, buffSlice, (span, sequence) => {
+                                foreach (var segment in sequence)
+                                {
+                                    Encoding.UTF8.GetChars(segment.Span, span);
+
+                                    span = span.Slice(segment.Length);
+                                }
+                            });
+                        }
+
+                        _ = Task.Run(() => HandleMessage(msg));
+
+                        // Skip the line + the \n character (basically position)
+                        buffer = buffer.Slice(buffer.GetPosition(1, position.Value));
+                    }
+                }
+                while (position != null);
+
+                // Tell the PipeReader how much of the buffer we have consumed
+                Pipe.Reader.AdvanceTo(buffer.Start, buffer.End);
+
+                // Stop reading if there's no more data coming
+                if (result.IsCompleted)
+                {
+                    break;
+                }
+            }
+
+            // Mark the PipeReader as complete
+            Pipe.Reader.Complete();
+        }
+
+        private async ValueTask HandleMessage(string rawMessage)
         {
             OnRawMessageRecieved(new RawMessageEventArgs(rawMessage, false));
             var message = new IrcMessage(rawMessage);
             if (Handlers.ContainsKey(message.Command.ToUpper()))
-                Handlers[message.Command.ToUpper()](this, message);
+                await Handlers[message.Command.ToUpper()](this, message);
             else
             {
                 // TODO: Fire an event or something
@@ -312,7 +382,7 @@ namespace ChatSharp
         /// <summary>
         /// Send a raw IRC message. Behaves like /quote in most IRC clients.
         /// </summary>
-        public void SendRawMessage(string message, params object[] format)
+        public async ValueTask SendRawMessage(string message, params object[] format)
         {
             if (NetworkStream == null)
             {
@@ -323,19 +393,6 @@ namespace ChatSharp
             message = string.Format(message, format);
             var data = Encoding.GetBytes(message + "\r\n");
 
-            NetworkStream.BeginWrite(data, 0, data.Length, MessageSent, message);
-        }
-
-        /// <summary>
-        /// Send a raw IRC message. Behaves like /quote in most IRC clients.
-        /// </summary>
-        public void SendIrcMessage(IrcMessage message)
-        {
-            SendRawMessage(message.RawMessage);
-        }
-
-        private void MessageSent(IAsyncResult result)
-        {
             if (NetworkStream == null)
             {
                 OnNetworkError(new SocketErrorEventArgs(SocketError.NotConnected));
@@ -344,7 +401,7 @@ namespace ChatSharp
 
             try
             {
-                NetworkStream.EndWrite(result);
+                await NetworkStream.WriteAsync(data, 0, data.Length);
             }
             catch (IOException e)
             {
@@ -355,8 +412,13 @@ namespace ChatSharp
                 return;
             }
 
-            OnRawMessageSent(new RawMessageEventArgs((string)result.AsyncState, true));
+            OnRawMessageSent(new RawMessageEventArgs(message, true));
         }
+
+        /// <summary>
+        /// Send a raw IRC message. Behaves like /quote in most IRC clients.
+        /// </summary>
+        public ValueTask SendIrcMessage(IrcMessage message) => SendRawMessage(message.RawMessage);
 
         /// <summary>
         /// IRC Error Replies. rfc1459 6.1.

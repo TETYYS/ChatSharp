@@ -1,5 +1,6 @@
 using ChatSharp.Events;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace ChatSharp.Handlers
 {
@@ -11,9 +12,11 @@ namespace ChatSharp.Handlers
         /// <summary>
         /// IRC Error replies handler. See rfc1459 6.1.
         /// </summary>
-        public static void HandleError(IrcClient client, IrcMessage message)
+        public static ValueTask HandleError(IrcClient client, IrcMessage message)
         {
             client.OnErrorReply(new Events.ErrorReplyEventArgs(message));
+
+            return default;
         }
     }
 }

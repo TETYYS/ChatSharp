@@ -1,11 +1,12 @@
 using ChatSharp.Events;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace ChatSharp.Handlers
 {
     internal static class ServerHandlers
     {
-        public static void HandleISupport(IrcClient client, IrcMessage message)
+        public static ValueTask HandleISupport(IrcClient client, IrcMessage message)
         {
             if (client.ServerInfo == null)
                 client.ServerInfo = new ServerInfo();
@@ -97,9 +98,11 @@ namespace ChatSharp.Handlers
                 }
             }
             client.OnServerInfoRecieved(new SupportsEventArgs(client.ServerInfo));
+
+            return default;
         }
 
-        public static void HandleMyInfo(IrcClient client, IrcMessage message)
+        public static ValueTask HandleMyInfo(IrcClient client, IrcMessage message)
         {
             // 004 sendak.freenode.net ircd-seven-1.1.3 DOQRSZaghilopswz CFILMPQbcefgijklmnopqrstvz bkloveqjfI
             // TODO: Figure out how to properly handle this message
@@ -113,6 +116,8 @@ namespace ChatSharp.Handlers
                         client.ServerInfo.SupportedChannelModes.ChannelUserModes += c.ToString();
                 }
             }
+
+            return default;
         }
     }
 }

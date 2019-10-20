@@ -2,6 +2,7 @@ using ChatSharp.Events;
 using System.Linq;
 using System.Collections.Generic;
 using System;
+using System.Threading.Tasks;
 
 namespace ChatSharp.Handlers
 {
@@ -87,7 +88,7 @@ namespace ChatSharp.Handlers
             client.SetHandler("907", SaslHandlers.HandleError); // ERR_SASLALREADY
         }
 
-        public static void HandleNick(IrcClient client, IrcMessage message)
+        public static ValueTask HandleNick(IrcClient client, IrcMessage message)
         {
             var user = client.Users.Get(message.Prefix);
             var oldNick = user.Nick;
@@ -99,9 +100,11 @@ namespace ChatSharp.Handlers
                 OldNick = oldNick,
                 NewNick = message.Parameters[0]
             });
+
+            return default;
         }
 
-        public static void HandleQuit(IrcClient client, IrcMessage message)
+        public static ValueTask HandleQuit(IrcClient client, IrcMessage message)
         {
             var user = new IrcUser(message.Prefix);
             if (client.User.Nick != user.Nick)
@@ -109,20 +112,23 @@ namespace ChatSharp.Handlers
                 client.Users.Remove(user);
                 client.OnUserQuit(new UserEventArgs(user));
             }
+
+            return default;
         }
 
-        public static void HandlePing(IrcClient client, IrcMessage message)
+        public static async ValueTask HandlePing(IrcClient client, IrcMessage message)
         {
             client.ServerNameFromPing = message.Parameters[0];
-            client.SendRawMessage("PONG :{0}", message.Parameters[0]);
+            await client.SendRawMessage("PONG :{0}", message.Parameters[0]);
         }
 
-        public static void HandleNotice(IrcClient client, IrcMessage message)
+        public static ValueTask HandleNotice(IrcClient client, IrcMessage message)
         {
             client.OnNoticeRecieved(new IrcNoticeEventArgs(message));
+            return default;
         }
 
-        public static void HandlePrivmsg(IrcClient client, IrcMessage message)
+        public static ValueTask HandlePrivmsg(IrcClient client, IrcMessage message)
         {
             var eventArgs = new PrivateMessageEventArgs(client, message, client.ServerInfo);
             client.OnPrivateMessageRecieved(eventArgs);
@@ -130,19 +136,21 @@ namespace ChatSharp.Handlers
                 client.OnChannelMessageRecieved(eventArgs);
             else
                 client.OnUserMessageRecieved(eventArgs);
+
+            return default;
         }
 
-        public static void HandleErronousNick(IrcClient client, IrcMessage message)
+        public static async ValueTask HandleErronousNick(IrcClient client, IrcMessage message)
         {
             var eventArgs = new ErronousNickEventArgs(client.User.Nick);
             if (message.Command == "433") // Nick in use
                 client.OnNickInUse(eventArgs);
             // else ... TODO
             if (!eventArgs.DoNotHandle && client.Settings.GenerateRandomNickIfRefused)
-                client.Nick(eventArgs.NewNick);
+                await client.Nick(eventArgs.NewNick);
         }
 
-        public static void HandleMode(IrcClient client, IrcMessage message)
+        public static ValueTask HandleMode(IrcClient client, IrcMessage message)
         {
             string target, mode = null;
             int i = 2;
@@ -233,8 +241,7 @@ namespace ChatSharp.Handlers
                 catch { }
                 if (message.Command == "324")
                 {
-                    var operation = client.RequestManager.DequeueOperation("MODE " + channel.Name);
-                    operation.Callback(operation);
+                    client.RequestManager.CompleteOperation("MODE " + channel.Name);
                 }
             }
             else
@@ -251,6 +258,8 @@ namespace ChatSharp.Handlers
                         client.User.Mode = client.User.Mode.Replace(c.ToString(), string.Empty);
                 }
             }
+
+            return default;
         }
     }
 }
