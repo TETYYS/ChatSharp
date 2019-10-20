@@ -7,6 +7,7 @@ using System.IO;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading.Tasks;
 using System.Timers;
 
 namespace ChatSharp
@@ -52,7 +53,7 @@ namespace ChatSharp
         private string ServerHostname { get; set; }
         private int ServerPort { get; set; }
         private Timer PingTimer { get; set; }
-        private Socket Socket { get; set; }
+        private TcpClient TcpClient { get; set; }
 
         internal RequestManager RequestManager { get; set; }
 
@@ -184,10 +185,10 @@ namespace ChatSharp
         /// <summary>
         /// Connects to the IRC server.
         /// </summary>
-        public void ConnectAsync()
+        public async Task ConnectAsync(bool AuthenticateLegacy)
         {
-            if (Socket != null && Socket.Connected) throw new InvalidOperationException("Socket is already connected to server.");
-            Socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            if (TcpClient != null && TcpClient.Connected) throw new InvalidOperationException("Socket is already connected to server.");
+            TcpClient = new TcpClient();
             ReadBuffer = new byte[ReadBufferLength];
             ReadBufferIndex = 0;
             PingTimer = new Timer(30000);
@@ -196,7 +197,39 @@ namespace ChatSharp
                 if (!string.IsNullOrEmpty(ServerNameFromPing))
                     SendRawMessage("PING :{0}", ServerNameFromPing);
             };
-            Socket.BeginConnect(ServerHostname, ServerPort, ConnectComplete, null);
+            await TcpClient.ConnectAsync(ServerHostname, ServerPort);
+
+            try
+            {
+                NetworkStream = TcpClient.GetStream();
+                if (UseSSL)
+                {
+                    if (IgnoreInvalidSSL)
+                        NetworkStream = new SslStream(NetworkStream, false, (sender, certificate, chain, policyErrors) => true);
+                    else
+                        NetworkStream = new SslStream(NetworkStream);
+                    ((SslStream)NetworkStream).AuthenticateAsClient(ServerHostname);
+                }
+
+                NetworkStream.BeginRead(ReadBuffer, ReadBufferIndex, ReadBuffer.Length, DataRecieved, null);
+                // Begin capability negotiation
+                SendRawMessage("CAP LS 302");
+                // Write login info
+                if (AuthenticateLegacy && !string.IsNullOrEmpty(User.Password))
+                    SendRawMessage("PASS {0}", User.Password);
+                SendRawMessage("NICK {0}", User.Nick);
+                // hostname, servername are ignored by most IRC servers
+                SendRawMessage("USER {0} hostname servername :{1}", User.User, User.RealName);
+                PingTimer.Start();
+            }
+            catch (SocketException e)
+            {
+                OnNetworkError(new SocketErrorEventArgs(e.SocketErrorCode));
+            }
+            catch (Exception e)
+            {
+                OnError(new Events.ErrorEventArgs(e));
+            }
         }
 
         /// <summary>
@@ -216,49 +249,12 @@ namespace ChatSharp
                 SendRawMessage("QUIT");
             else
                 SendRawMessage("QUIT :{0}", reason);
-            Socket.BeginDisconnect(false, ar =>
-            {
-                Socket.EndDisconnect(ar);
-                NetworkStream.Dispose();
-                NetworkStream = null;
-            }, null);
+
+            try { TcpClient.Close(); } catch { }
+            TcpClient.Dispose();
+            TcpClient = null;
+
             PingTimer.Dispose();
-        }
-
-        private void ConnectComplete(IAsyncResult result)
-        {
-            try
-            {
-                Socket.EndConnect(result);
-                NetworkStream = new NetworkStream(Socket);
-                if (UseSSL)
-                {
-                    if (IgnoreInvalidSSL)
-                        NetworkStream = new SslStream(NetworkStream, false, (sender, certificate, chain, policyErrors) => true);
-                    else
-                        NetworkStream = new SslStream(NetworkStream);
-                    ((SslStream)NetworkStream).AuthenticateAsClient(ServerHostname);
-                }
-
-                NetworkStream.BeginRead(ReadBuffer, ReadBufferIndex, ReadBuffer.Length, DataRecieved, null);
-                // Begin capability negotiation
-                SendRawMessage("CAP LS 302");
-                // Write login info
-                if (!string.IsNullOrEmpty(User.Password))
-                    SendRawMessage("PASS {0}", User.Password);
-                SendRawMessage("NICK {0}", User.Nick);
-                // hostname, servername are ignored by most IRC servers
-                SendRawMessage("USER {0} hostname servername :{1}", User.User, User.RealName);
-                PingTimer.Start();
-            }
-            catch (SocketException e)
-            {
-                OnNetworkError(new SocketErrorEventArgs(e.SocketErrorCode));
-            }
-            catch (Exception e)
-            {
-                OnError(new Events.ErrorEventArgs(e));
-            }
         }
 
         private void DataRecieved(IAsyncResult result)
