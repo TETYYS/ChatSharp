@@ -31,7 +31,7 @@ namespace ChatSharp
         public object GetState(string key)
         {
             var realKey = PendingOperations.Keys.FirstOrDefault(k => string.Equals(k, key, StringComparison.OrdinalIgnoreCase));
-            return PendingOperations[realKey];
+            return PendingOperations[realKey].State;
         }
 
         public void CompleteOperation(string key)
