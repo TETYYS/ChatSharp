@@ -53,8 +53,6 @@ namespace ChatSharp
         private int ServerPort { get; set; }
         private Timer PingTimer { get; set; }
         private Socket Socket { get; set; }
-        private ConcurrentQueue<string> WriteQueue { get; set; }
-        private bool IsWriting { get; set; }
 
         internal RequestManager RequestManager { get; set; }
 
@@ -163,12 +161,12 @@ namespace ChatSharp
             MessageHandlers.RegisterDefaultHandlers(this);
             RequestManager = new RequestManager();
             UseSSL = useSSL;
-            WriteQueue = new ConcurrentQueue<string>();
             ServerInfo = new ServerInfo();
             PrivmsgPrefix = "";
             Channels = User.Channels = new ChannelCollection(this);
-            Users = new UserPool();
-            Users.Add(User); // Add self to user pool
+            Users = new UserPool {
+                User // Add self to user pool
+            };
             Capabilities = new CapabilityPool();
 
             // List of supported capabilities
@@ -198,17 +196,6 @@ namespace ChatSharp
                 if (!string.IsNullOrEmpty(ServerNameFromPing))
                     SendRawMessage("PING :{0}", ServerNameFromPing);
             };
-            var checkQueue = new Timer(1000);
-            checkQueue.Elapsed += (sender, e) =>
-            {
-                string nextMessage;
-                if (WriteQueue.Count > 0)
-                {
-                    while (!WriteQueue.TryDequeue(out nextMessage));
-                    SendRawMessage(nextMessage);
-                }
-            };
-            checkQueue.Start();
             Socket.BeginConnect(ServerHostname, ServerPort, ConnectComplete, null);
         }
 
@@ -289,8 +276,7 @@ namespace ChatSharp
             }
             catch (IOException e)
             {
-                var socketException = e.InnerException as SocketException;
-                if (socketException != null)
+                if (e.InnerException is SocketException socketException)
                     OnNetworkError(new SocketErrorEventArgs(socketException.SocketErrorCode));
                 else
                     throw;
@@ -341,15 +327,7 @@ namespace ChatSharp
             message = string.Format(message, format);
             var data = Encoding.GetBytes(message + "\r\n");
 
-            if (!IsWriting)
-            {
-                IsWriting = true;
-                NetworkStream.BeginWrite(data, 0, data.Length, MessageSent, message);
-            }
-            else
-            {
-                WriteQueue.Enqueue(message);
-            }
+            NetworkStream.BeginWrite(data, 0, data.Length, MessageSent, message);
         }
 
         /// <summary>
@@ -365,7 +343,6 @@ namespace ChatSharp
             if (NetworkStream == null)
             {
                 OnNetworkError(new SocketErrorEventArgs(SocketError.NotConnected));
-                IsWriting = false;
                 return;
             }
 
@@ -375,26 +352,14 @@ namespace ChatSharp
             }
             catch (IOException e)
             {
-                var socketException = e.InnerException as SocketException;
-                if (socketException != null)
+                if (e.InnerException is SocketException socketException)
                     OnNetworkError(new SocketErrorEventArgs(socketException.SocketErrorCode));
                 else
                     throw;
                 return;
             }
-            finally
-            {
-                IsWriting = false;
-            }
 
             OnRawMessageSent(new RawMessageEventArgs((string)result.AsyncState, true));
-
-            string nextMessage;
-            if (WriteQueue.Count > 0)
-            {
-                while (!WriteQueue.TryDequeue(out nextMessage));
-                SendRawMessage(nextMessage);
-            }
         }
 
         /// <summary>
@@ -403,7 +368,7 @@ namespace ChatSharp
         public event EventHandler<Events.ErrorReplyEventArgs> ErrorReply;
         internal void OnErrorReply(Events.ErrorReplyEventArgs e)
         {
-            if (ErrorReply != null) ErrorReply(this, e);
+            ErrorReply?.Invoke(this, e);
         }
         /// <summary>
         /// Raised for errors.
@@ -411,7 +376,7 @@ namespace ChatSharp
         public event EventHandler<Events.ErrorEventArgs> Error;
         internal void OnError(Events.ErrorEventArgs e)
         {
-            if (Error != null) Error(this, e);
+            Error?.Invoke(this, e);
         }
         /// <summary>
         /// Raised for socket errors. ChatSharp does not automatically reconnect.
@@ -419,7 +384,7 @@ namespace ChatSharp
         public event EventHandler<SocketErrorEventArgs> NetworkError;
         internal void OnNetworkError(SocketErrorEventArgs e)
         {
-            if (NetworkError != null) NetworkError(this, e);
+            NetworkError?.Invoke(this, e);
         }
         /// <summary>
         /// Occurs when a raw message is sent.
@@ -427,7 +392,7 @@ namespace ChatSharp
         public event EventHandler<RawMessageEventArgs> RawMessageSent;
         internal void OnRawMessageSent(RawMessageEventArgs e)
         {
-            if (RawMessageSent != null) RawMessageSent(this, e);
+            RawMessageSent?.Invoke(this, e);
         }
         /// <summary>
         /// Occurs when a raw message recieved.
@@ -435,7 +400,7 @@ namespace ChatSharp
         public event EventHandler<RawMessageEventArgs> RawMessageRecieved;
         internal void OnRawMessageRecieved(RawMessageEventArgs e)
         {
-            if (RawMessageRecieved != null) RawMessageRecieved(this, e);
+            RawMessageRecieved?.Invoke(this, e);
         }
         /// <summary>
         /// Occurs when a notice recieved.
@@ -443,7 +408,7 @@ namespace ChatSharp
         public event EventHandler<IrcNoticeEventArgs> NoticeRecieved;
         internal void OnNoticeRecieved(IrcNoticeEventArgs e)
         {
-            if (NoticeRecieved != null) NoticeRecieved(this, e);
+            NoticeRecieved?.Invoke(this, e);
         }
         /// <summary>
         /// Occurs when the server has sent us part of the MOTD.
@@ -451,7 +416,7 @@ namespace ChatSharp
         public event EventHandler<ServerMOTDEventArgs> MOTDPartRecieved;
         internal void OnMOTDPartRecieved(ServerMOTDEventArgs e)
         {
-            if (MOTDPartRecieved != null) MOTDPartRecieved(this, e);
+            MOTDPartRecieved?.Invoke(this, e);
         }
         /// <summary>
         /// Occurs when the entire server MOTD has been recieved.
@@ -459,7 +424,7 @@ namespace ChatSharp
         public event EventHandler<ServerMOTDEventArgs> MOTDRecieved;
         internal void OnMOTDRecieved(ServerMOTDEventArgs e)
         {
-            if (MOTDRecieved != null) MOTDRecieved(this, e);
+            MOTDRecieved?.Invoke(this, e);
         }
         /// <summary>
         /// Occurs when a private message recieved. This can be a channel OR a user message.
@@ -467,7 +432,7 @@ namespace ChatSharp
         public event EventHandler<PrivateMessageEventArgs> PrivateMessageRecieved;
         internal void OnPrivateMessageRecieved(PrivateMessageEventArgs e)
         {
-            if (PrivateMessageRecieved != null) PrivateMessageRecieved(this, e);
+            PrivateMessageRecieved?.Invoke(this, e);
         }
         /// <summary>
         /// Occurs when a message is recieved in an IRC channel.
@@ -475,7 +440,7 @@ namespace ChatSharp
         public event EventHandler<PrivateMessageEventArgs> ChannelMessageRecieved;
         internal void OnChannelMessageRecieved(PrivateMessageEventArgs e)
         {
-            if (ChannelMessageRecieved != null) ChannelMessageRecieved(this, e);
+            ChannelMessageRecieved?.Invoke(this, e);
         }
         /// <summary>
         /// Occurs when a message is recieved from a user.
@@ -483,7 +448,7 @@ namespace ChatSharp
         public event EventHandler<PrivateMessageEventArgs> UserMessageRecieved;
         internal void OnUserMessageRecieved(PrivateMessageEventArgs e)
         {
-            if (UserMessageRecieved != null) UserMessageRecieved(this, e);
+            UserMessageRecieved?.Invoke(this, e);
         }
         /// <summary>
         /// Raised if the nick you've chosen is in use. By default, ChatSharp will pick a
@@ -492,7 +457,7 @@ namespace ChatSharp
         public event EventHandler<ErronousNickEventArgs> NickInUse;
         internal void OnNickInUse(ErronousNickEventArgs e)
         {
-            if (NickInUse != null) NickInUse(this, e);
+            NickInUse?.Invoke(this, e);
         }
         /// <summary>
         /// Occurs when a user or channel mode is changed.
@@ -500,7 +465,7 @@ namespace ChatSharp
         public event EventHandler<ModeChangeEventArgs> ModeChanged;
         internal void OnModeChanged(ModeChangeEventArgs e)
         {
-            if (ModeChanged != null) ModeChanged(this, e);
+            ModeChanged?.Invoke(this, e);
         }
         /// <summary>
         /// Occurs when a user joins a channel.
@@ -508,7 +473,7 @@ namespace ChatSharp
         public event EventHandler<ChannelUserEventArgs> UserJoinedChannel;
         internal void OnUserJoinedChannel(ChannelUserEventArgs e)
         {
-            if (UserJoinedChannel != null) UserJoinedChannel(this, e);
+            UserJoinedChannel?.Invoke(this, e);
         }
         /// <summary>
         /// Occurs when a user parts a channel.
@@ -516,7 +481,7 @@ namespace ChatSharp
         public event EventHandler<ChannelUserEventArgs> UserPartedChannel;
         internal void OnUserPartedChannel(ChannelUserEventArgs e)
         {
-            if (UserPartedChannel != null) UserPartedChannel(this, e);
+            UserPartedChannel?.Invoke(this, e);
         }
         /// <summary>
         /// Occurs when we have received the list of users present in a channel.
@@ -524,7 +489,7 @@ namespace ChatSharp
         public event EventHandler<ChannelEventArgs> ChannelListRecieved;
         internal void OnChannelListRecieved(ChannelEventArgs e)
         {
-            if (ChannelListRecieved != null) ChannelListRecieved(this, e);
+            ChannelListRecieved?.Invoke(this, e);
         }
         /// <summary>
         /// Occurs when we have received the topic of a channel.
@@ -532,7 +497,7 @@ namespace ChatSharp
         public event EventHandler<ChannelTopicEventArgs> ChannelTopicReceived;
         internal void OnChannelTopicReceived(ChannelTopicEventArgs e)
         {
-            if (ChannelTopicReceived != null) ChannelTopicReceived(this, e);
+            ChannelTopicReceived?.Invoke(this, e);
         }
         /// <summary>
         /// Occurs when the IRC connection is established and it is safe to begin interacting with the server.
@@ -540,7 +505,7 @@ namespace ChatSharp
         public event EventHandler<EventArgs> ConnectionComplete;
         internal void OnConnectionComplete(EventArgs e)
         {
-            if (ConnectionComplete != null) ConnectionComplete(this, e);
+            ConnectionComplete?.Invoke(this, e);
         }
         /// <summary>
         /// Occurs when we receive server info (such as max nick length).
@@ -548,7 +513,7 @@ namespace ChatSharp
         public event EventHandler<SupportsEventArgs> ServerInfoRecieved;
         internal void OnServerInfoRecieved(SupportsEventArgs e)
         {
-            if (ServerInfoRecieved != null) ServerInfoRecieved(this, e);
+            ServerInfoRecieved?.Invoke(this, e);
         }
         /// <summary>
         /// Occurs when a user is kicked.
@@ -556,7 +521,7 @@ namespace ChatSharp
         public event EventHandler<KickEventArgs> UserKicked;
         internal void OnUserKicked(KickEventArgs e)
         {
-            if (UserKicked != null) UserKicked(this, e);
+            UserKicked?.Invoke(this, e);
         }
         /// <summary>
         /// Occurs when a WHOIS response is received.
@@ -564,7 +529,7 @@ namespace ChatSharp
         public event EventHandler<WhoIsReceivedEventArgs> WhoIsReceived;
         internal void OnWhoIsReceived(WhoIsReceivedEventArgs e)
         {
-            if (WhoIsReceived != null) WhoIsReceived(this, e);
+            WhoIsReceived?.Invoke(this, e);
         }
         /// <summary>
         /// Occurs when a user has changed their nick.
@@ -572,7 +537,7 @@ namespace ChatSharp
         public event EventHandler<NickChangedEventArgs> NickChanged;
         internal void OnNickChanged(NickChangedEventArgs e)
         {
-            if (NickChanged != null) NickChanged(this, e);
+            NickChanged?.Invoke(this, e);
         }
         /// <summary>
         /// Occurs when a user has quit.
@@ -580,7 +545,7 @@ namespace ChatSharp
         public event EventHandler<UserEventArgs> UserQuit;
         internal void OnUserQuit(UserEventArgs e)
         {
-            if (UserQuit != null) UserQuit(this, e);
+            UserQuit?.Invoke(this, e);
         }
         /// <summary>
         /// Occurs when a WHO (WHOX protocol) is received.
