@@ -187,20 +187,21 @@ namespace ChatSharp
             RandomNumber = new Random();
         }
 
-        public async ValueTask WaitForNamedEvent(string Name)
+        public async ValueTask<bool> WaitForNamedEvent(string Name)
         {
             AsyncManualResetEvent ev;
             lock (NamedEventsLock)
             {
                 if (!NamedEvents.TryGetValue(Name, out ev))
                 {
-                    NamedEvents[Name] = ev = new AsyncManualResetEvent(false);
+                    return false;
                 }
             }
             var cancellation = new CancellationTokenSource();
             var task = ev.WaitAsync(cancellation.Token);
             await Task.WhenAny(Task.Delay(TimeSpan.FromMinutes(1)), task);
-            cancellation.Cancel();
+            try { cancellation.Cancel(); } catch { }
+            return true;
         }
 
         public void AddNamedEvent(string Name)

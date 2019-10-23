@@ -71,8 +71,13 @@ namespace ChatSharp.Handlers
             return default;
         }
 
-        public static ValueTask HandleUserListPart(IrcClient client, IrcMessage message)
+        public static async ValueTask HandleUserListPart(IrcClient client, IrcMessage message)
         {
+            if (!client.Channels.Contains(message.Parameters[2])) {
+                if (!await client.WaitForNamedEvent("channel_" + message.Parameters[2]))
+                    return;
+            }
+
             if (client.Capabilities.IsEnabled("userhost-in-names"))
             {
                 var channel = client.Channels[message.Parameters[2]];
@@ -132,17 +137,13 @@ namespace ChatSharp.Handlers
                         user.ChannelModes[channel] = modes;
                 }
             }
-
-            return default;
         }
 
         public static async ValueTask HandleUserListEnd(IrcClient client, IrcMessage message)
         {
-            await client.WaitForNamedEvent("channel_" + message.Parameters[1]);
-
-            if (!client.Channels.Contains(message.Parameters[1]))
-            {
-                return;
+            if (!client.Channels.Contains(message.Parameters[1])) {
+                if (!await client.WaitForNamedEvent("channel_" + message.Parameters[1]))
+                    return;
             }
 
             var channel = client.Channels[message.Parameters[1]];
