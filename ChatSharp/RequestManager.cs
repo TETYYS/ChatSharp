@@ -3,6 +3,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace ChatSharp
@@ -21,6 +22,7 @@ namespace ChatSharp
             RequestOperation req;
             if (PendingOperations.TryGetValue(key, out req))
             {
+                Interlocked.Increment(ref req.RefCount);
                 await req.Ev.WaitAsync();
                 return;
             }
@@ -42,7 +44,11 @@ namespace ChatSharp
         public void CompleteOperation(string key)
         {
             var operation = PendingOperations[key];
-            PendingOperations.TryRemove(key, out var _);
+            if (operation.RefCount > 0)
+                Interlocked.Decrement(ref operation.RefCount);
+            else
+                PendingOperations.TryRemove(key, out var _);
+            
             operation.Ev.Set();
         }
 
@@ -50,6 +56,7 @@ namespace ChatSharp
         {
             public object State { get; set; }
             public AsyncManualResetEvent Ev { get; set; }
+            public int RefCount = 1;
 
             public RequestOperation(object state)
             {

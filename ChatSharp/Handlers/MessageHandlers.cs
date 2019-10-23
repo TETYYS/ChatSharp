@@ -15,7 +15,7 @@ namespace ChatSharp.Handlers
             client.SetHandler("NOTICE", HandleNotice);
             client.SetHandler("PRIVMSG", HandlePrivmsg);
             client.SetHandler("MODE", HandleMode);
-            //client.SetHandler("324", HandleMode);
+            client.SetHandler("324", HandleMode);
             client.SetHandler("NICK", HandleNick);
             client.SetHandler("QUIT", HandleQuit);
             client.SetHandler("431", HandleErronousNick);

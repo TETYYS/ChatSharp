@@ -44,7 +44,7 @@ namespace ChatSharp
         /// <summary>
         /// Users in this channel, grouped by mode. Users with no special mode are grouped under null.
         /// </summary>
-        public Dictionary<char?, UserPoolView> UsersByMode { get; set; }
+        public Dictionary<char?, UserPoolView> UsersByMode { get; set; } = new Dictionary<char?, UserPoolView>();
 
         internal IrcChannel(IrcClient client, string name)
         {
