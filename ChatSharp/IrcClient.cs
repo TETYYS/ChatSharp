@@ -143,11 +143,10 @@ namespace ChatSharp
         public bool IsAuthenticatingSasl { get; internal set; }
 
         private Task StreamReader { get; set; }
-
         private Pipe Pipe { get; set; }
-
         public object NamedEventsLock = new object();
         public Dictionary<string, AsyncManualResetEvent> NamedEvents { get; internal set; } = new Dictionary<string, AsyncManualResetEvent>();
+        private SemaphoreSlim WriteLock = new SemaphoreSlim(1, 1);
 
         /// <summary>
         /// Creates a new IRC client, but will not connect until ConnectAsync is called.
@@ -336,14 +335,17 @@ namespace ChatSharp
                 {
                     if (ex.InnerException is SocketException socketException)
                         OnNetworkError(new SocketErrorEventArgs(socketException.SocketErrorCode));
-                    else
+                    else {
+                        OnNetworkError(new SocketErrorEventArgs(SocketError.NotConnected));
                         throw;
+                    }
                 }
 
                 var result = await Pipe.Writer.FlushAsync();
 
                 if (result.IsCompleted)
                 {
+                    OnNetworkError(new SocketErrorEventArgs(SocketError.NotConnected));
                     break;
                 }
             }
@@ -414,6 +416,7 @@ namespace ChatSharp
                 // Stop reading if there's no more data coming
                 if (result.IsCompleted)
                 {
+                    OnNetworkError(new SocketErrorEventArgs(SocketError.NotConnected));
                     break;
                 }
             }
@@ -456,15 +459,21 @@ namespace ChatSharp
 
             try
             {
-                await NetworkStream.WriteAsync(data, 0, data.Length);
+                await WriteLock.WaitAsync();
+                try {
+                    await NetworkStream.WriteAsync(data, 0, data.Length);
+                } finally {
+                    WriteLock.Release();
+                }
+            }
+            catch (IOException e) when (e.InnerException is SocketException socketException)
+            {
+                OnNetworkError(new SocketErrorEventArgs(socketException.SocketErrorCode));
+                return;
             }
             catch (IOException e)
             {
-                if (e.InnerException is SocketException socketException)
-                    OnNetworkError(new SocketErrorEventArgs(socketException.SocketErrorCode));
-                else
-                    throw;
-                return;
+                OnNetworkError(new SocketErrorEventArgs(SocketError.NotConnected));
             }
 
             OnRawMessageSent(new RawMessageEventArgs(message, true));
