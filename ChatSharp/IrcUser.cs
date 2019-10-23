@@ -104,7 +104,7 @@ namespace ChatSharp
         /// </summary>
         public string Account { get; set; }
 
-        internal Dictionary<IrcChannel, List<char?>> ChannelModes { get; set; }
+        public Dictionary<IrcChannel, List<char?>> ChannelModes { get; set; }
 
         /// <summary>
         /// This user's hostmask (nick!user@host).
