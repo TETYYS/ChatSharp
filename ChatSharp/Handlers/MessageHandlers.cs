@@ -210,7 +210,7 @@ namespace ChatSharp.Handlers
                                     user.ChannelModes[channel].Remove(mode);
                             }
                             client.OnModeChanged(new ModeChangeEventArgs(channel.Name, user, 
-                                (add ? "+" : "-") + mode + " " + message.Parameters[i++]));
+                                (add ? "+" : "-") + mode + " " + user.Nick));
                         }
                         if (client.ServerInfo.SupportedChannelModes.Settings.Contains(mode))
                         {
