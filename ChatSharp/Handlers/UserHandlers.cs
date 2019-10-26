@@ -8,7 +8,7 @@ namespace ChatSharp.Handlers
 {
     internal static class UserHandlers
     {
-        public static ValueTask HandleWhoIsUser(IrcClient client, IrcMessage message)
+        public static void HandleWhoIsUser(IrcClient client, IrcMessage message)
         {
             if (message.Parameters != null && message.Parameters.Length >= 6)
             {
@@ -26,44 +26,34 @@ namespace ChatSharp.Handlers
                     whois.User = user;
                 }
             }
-
-            return default;
         }
 
-        public static ValueTask HandleWhoIsLoggedInAs(IrcClient client, IrcMessage message)
+        public static void HandleWhoIsLoggedInAs(IrcClient client, IrcMessage message)
         {
             var whois = (WhoIs)client.RequestManager.GetState("WHOIS " + message.Parameters[1]);
             whois.LoggedInAs = message.Parameters[2];
-
-            return default;
         }
 
-        public static ValueTask HandleWhoIsServer(IrcClient client, IrcMessage message)
+        public static void HandleWhoIsServer(IrcClient client, IrcMessage message)
         {
             var whois = (WhoIs)client.RequestManager.GetState("WHOIS " + message.Parameters[1]);
             whois.Server = message.Parameters[2];
             whois.ServerInfo = message.Parameters[3];
-
-            return default;
         }
 
-        public static ValueTask HandleWhoIsOperator(IrcClient client, IrcMessage message)
+        public static void HandleWhoIsOperator(IrcClient client, IrcMessage message)
         {
             var whois = (WhoIs)client.RequestManager.GetState("WHOIS " + message.Parameters[1]);
             whois.IrcOp = true;
-
-            return default;
         }
 
-        public static ValueTask HandleWhoIsIdle(IrcClient client, IrcMessage message)
+        public static void HandleWhoIsIdle(IrcClient client, IrcMessage message)
         {
             var whois = (WhoIs)client.RequestManager.GetState("WHOIS " + message.Parameters[1]);
             whois.SecondsIdle = int.Parse(message.Parameters[2]);
-
-            return default;
         }
 
-        public static ValueTask HandleWhoIsChannels(IrcClient client, IrcMessage message)
+        public static void HandleWhoIsChannels(IrcClient client, IrcMessage message)
         {
             var whois = (WhoIs)client.RequestManager.GetState("WHOIS " + message.Parameters[1]);
             var channels = message.Parameters[2].Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
@@ -71,11 +61,9 @@ namespace ChatSharp.Handlers
                 if (!channels[i].StartsWith("#"))
                     channels[i] = channels[i].Substring(1);
             whois.Channels = whois.Channels.Concat(channels).ToArray();
-
-            return default;
         }
 
-        public static ValueTask HandleWhoIsEnd(IrcClient client, IrcMessage message)
+        public static void HandleWhoIsEnd(IrcClient client, IrcMessage message)
         {
             var whois = (WhoIs)client.RequestManager.GetState("WHOIS " + message.Parameters[1]);
 
@@ -84,11 +72,9 @@ namespace ChatSharp.Handlers
 
             client.RequestManager.CompleteOperation("WHOIS " + message.Parameters[1]);
             client.OnWhoIsReceived(new Events.WhoIsReceivedEventArgs(whois));
-
-            return default;
         }
 
-        public static ValueTask HandleWho(IrcClient client, IrcMessage message)
+        public static void HandleWho(IrcClient client, IrcMessage message)
         {
             // A standard WHO request (numeric 352) is just like a WHOX request, except that it has less fields.
             foreach (var query in client.RequestManager.PendingOperations.Where(kvp => kvp.Key.StartsWith("WHO ")))
@@ -118,11 +104,9 @@ namespace ChatSharp.Handlers
                     whoList.Add(who);
                 }
             }
-
-            return default;
         }
 
-        public static ValueTask HandleWhox(IrcClient client, IrcMessage message)
+        public static void HandleWhox(IrcClient client, IrcMessage message)
         {
             int msgQueryType = int.Parse(message.Parameters[1]);
             var whoxQuery = new KeyValuePair<string, RequestOperation>();
@@ -233,18 +217,14 @@ namespace ChatSharp.Handlers
                 while (fieldIdx < message.Parameters.Length - 1);
                 whoxList.Add(whox);
             }
-
-            return default;
         }
 
-        public static ValueTask HandleLoggedIn(IrcClient client, IrcMessage message)
+        public static void HandleLoggedIn(IrcClient client, IrcMessage message)
         {
             client.User.Account = message.Parameters[2];
-
-            return default;
         }
 
-        public static ValueTask HandleWhoEnd(IrcClient client, IrcMessage message)
+        public static void HandleWhoEnd(IrcClient client, IrcMessage message)
         {
             if (client.ServerInfo.ExtendedWho)
             {
@@ -272,19 +252,15 @@ namespace ChatSharp.Handlers
                 client.RequestManager.CompleteOperation(query.Key);
                 client.OnWhoxReceived(new Events.WhoxReceivedEventArgs(whoList.ToArray()));
             }
-
-            return default;
         }
 
-        public static ValueTask HandleAccount(IrcClient client, IrcMessage message)
+        public static void HandleAccount(IrcClient client, IrcMessage message)
         {
             var user = client.Users.GetOrAdd(message.Prefix);
             user.Account = message.Parameters[0];
-
-            return default;
         }
 
-        public static ValueTask HandleChangeHost(IrcClient client, IrcMessage message)
+        public static void HandleChangeHost(IrcClient client, IrcMessage message)
         {
             var user = client.Users.Get(message.Prefix);
 
@@ -299,8 +275,6 @@ namespace ChatSharp.Handlers
                 if (user.Hostname != newHostname)
                     user.Hostname = newHostname;
             }
-
-            return default;
         }
     }
 }

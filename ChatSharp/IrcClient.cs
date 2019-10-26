@@ -11,6 +11,7 @@ using System.Net.Security;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using System.Timers;
 
@@ -24,7 +25,7 @@ namespace ChatSharp
         /// <summary>
         /// A raw IRC message handler.
         /// </summary>
-        public delegate ValueTask MessageHandler(IrcClient client, IrcMessage message);
+        public delegate void MessageHandler(IrcClient client, IrcMessage message);
         private Dictionary<string, MessageHandler> Handlers { get; set; }
 
         /// <summary>
@@ -148,6 +149,12 @@ namespace ChatSharp
         public Dictionary<string, AsyncManualResetEvent> NamedEvents { get; internal set; } = new Dictionary<string, AsyncManualResetEvent>();
         private SemaphoreSlim WriteLock = new SemaphoreSlim(1, 1);
 
+        private static readonly Channel<string> RW = Channel.CreateUnbounded<string>(new UnboundedChannelOptions() {
+            AllowSynchronousContinuations = true,
+            SingleReader = true,
+            SingleWriter = false
+        });
+
         /// <summary>
         /// Creates a new IRC client, but will not connect until ConnectAsync is called.
         /// </summary>
@@ -266,7 +273,7 @@ namespace ChatSharp
                 }
 
                 Pipe = new Pipe();
-                StreamReader = Task.WhenAll(FillPipe(), ReadPipe());
+                StreamReader = Task.WhenAll(FillPipe(), ReadPipe(), RWConsumer());
 
                 // Begin capability negotiation
                 await SendRawMessage("CAP LS 302");
@@ -310,9 +317,20 @@ namespace ChatSharp
             StreamReader = null;
             try { Pipe.Writer.Complete(); } catch { }
             try { Pipe.Reader.Complete(); } catch { }
+            try { RW.Writer.Complete(); } catch { }
             Pipe = null;
 
             PingTimer.Dispose();
+        }
+
+        private async Task RWConsumer()
+        {
+            while (await RW.Reader.WaitToReadAsync()) {
+                if (!RW.Reader.TryRead(out var item))
+                    continue;
+
+                HandleMessage(item);
+            }
         }
 
         private async Task FillPipe()
@@ -403,7 +421,7 @@ namespace ChatSharp
                             });
                         }
 
-                        _ = Task.Run(() => HandleMessage(msg));
+                        await RW.Writer.WriteAsync(msg);
 
                         // Skip the line + the \n character (basically position)
                         buffer = buffer.Slice(buffer.GetPosition(1, position.Value));
@@ -426,12 +444,12 @@ namespace ChatSharp
             Pipe.Reader.Complete();
         }
 
-        private async ValueTask HandleMessage(string rawMessage)
+        private void HandleMessage(string rawMessage)
         {
             OnRawMessageRecieved(new RawMessageEventArgs(rawMessage, false));
             var message = new IrcMessage(rawMessage);
             if (Handlers.ContainsKey(message.Command.ToUpper()))
-                await Handlers[message.Command.ToUpper()](this, message);
+                Handlers[message.Command.ToUpper()](this, message);
             else
             {
                 // TODO: Fire an event or something

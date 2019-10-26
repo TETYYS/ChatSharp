@@ -7,7 +7,7 @@ namespace ChatSharp.Handlers
 {
     internal static class CapabilityHandlers
     {
-        public static async ValueTask HandleCapability(IrcClient client, IrcMessage message)
+        public static void HandleCapability(IrcClient client, IrcMessage message)
         {
             var serverCaps = new List<string>();
             var supportedCaps = client.Capabilities.ToArray();
@@ -33,10 +33,10 @@ namespace ChatSharp.Handlers
                         // Check if we have to request any capability to be enabled.
                         // If not, end the capability negotiation.
                         if (requestedCaps.Count > 0)
-                            await client.SendRawMessage("CAP REQ :{0}", string.Join(" ", requestedCaps));
+                            _ = client.SendRawMessage("CAP REQ :{0}", string.Join(" ", requestedCaps));
                         else
                         {
-                            await client.SendRawMessage("CAP END");
+                            _ = client.SendRawMessage("CAP END");
                             client.IsNegotiatingCapabilities = false;
                         }
                     }
@@ -50,7 +50,7 @@ namespace ChatSharp.Handlers
                         // Begin SASL authentication
                         if (acceptedCap.StartsWith("sasl"))
                         {
-                            await client.SendRawMessage("AUTHENTICATE PLAIN");
+                            _ = client.SendRawMessage("AUTHENTICATE PLAIN");
                             client.IsAuthenticatingSasl = true;
                         }
                     }
@@ -59,7 +59,7 @@ namespace ChatSharp.Handlers
                     // acknowledged by the server.
                     if (client.IsNegotiatingCapabilities && client.Capabilities.Enabled.Count() == acceptedCaps.Count() && !client.IsAuthenticatingSasl)
                     {
-                        await client.SendRawMessage("CAP END");
+                        _ = client.SendRawMessage("CAP END");
                         client.IsNegotiatingCapabilities = false;
                     }
 
@@ -74,7 +74,7 @@ namespace ChatSharp.Handlers
                     // rejected by the server.
                     if (client.IsNegotiatingCapabilities && client.Capabilities.Disabled.Count() == rejectedCaps.Count())
                     {
-                        await client.SendRawMessage("CAP END");
+                        _ = client.SendRawMessage("CAP END");
                         client.IsNegotiatingCapabilities = false;
                     }
 
@@ -100,7 +100,7 @@ namespace ChatSharp.Handlers
                     // Check which new capabilities we support and send a REQ for them
                     wantCaps.AddRange(newCaps.Where(cap => client.Capabilities.Contains(cap) && !client.Capabilities[cap].IsEnabled));
 
-                    await client.SendRawMessage(string.Format("CAP REQ :{0}", string.Join(" ", wantCaps)));
+                    _ = client.SendRawMessage(string.Format("CAP REQ :{0}", string.Join(" ", wantCaps)));
                     break;
                 case "DEL":
                     var disabledCaps = message.Parameters[2].Split(new[] { " " }, StringSplitOptions.RemoveEmptyEntries).ToList();

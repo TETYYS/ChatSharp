@@ -32,11 +32,11 @@ namespace ChatSharp
         /// Returns an empty array if user has no modes.
         /// </summary>
         /// <returns></returns>
-        public List<char?> GetModesForNick(string nick)
+        public List<char> GetModesForNick(string nick)
         {
             var supportedPrefixes = Prefixes[1];
-            List<char?> modeList = new List<char?>();
-            List<char> nickPrefixes = new List<char>();
+            var modeList = new List<char>();
+            var nickPrefixes = new List<char>();
 
             foreach (char prefix in supportedPrefixes)
             {
@@ -47,8 +47,8 @@ namespace ChatSharp
                     {
                         nickPrefixes.Add(prefix);
                         var mode = GetModeForPrefix(prefix);
-                        if (!modeList.Contains(mode))
-                            modeList.Add(mode);
+                        if (mode != null && !modeList.Contains(mode.Value))
+                            modeList.Add(mode.Value);
                     }
                 }
             }

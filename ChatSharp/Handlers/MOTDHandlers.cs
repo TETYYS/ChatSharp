@@ -8,41 +8,37 @@ namespace ChatSharp.Handlers
     {
         public static string MOTD { get; set; }
 
-        public static ValueTask HandleMOTDStart(IrcClient client, IrcMessage message)
+        public static void HandleMOTDStart(IrcClient client, IrcMessage message)
         {
             MOTD = string.Empty;
-
-            return default;
         }
 
-        public static ValueTask HandleMOTD(IrcClient client, IrcMessage message)
+        public static void HandleMOTD(IrcClient client, IrcMessage message)
         {
             if (message.Parameters.Length != 2)
                 throw new IrcProtocolException("372 MOTD message is incorrectly formatted.");
             var part = message.Parameters[1].Substring(2);
             MOTD += part + Environment.NewLine;
             client.OnMOTDPartRecieved(new ServerMOTDEventArgs(part));
-
-            return default;
         }
 
-        public static async ValueTask HandleEndOfMOTD(IrcClient client, IrcMessage message)
+        public static void HandleEndOfMOTD(IrcClient client, IrcMessage message)
         {
             client.OnMOTDRecieved(new ServerMOTDEventArgs(MOTD));
             client.OnConnectionComplete(new EventArgs());
             // Verify our identity
-            await VerifyOurIdentity(client);
+            _ = VerifyOurIdentity(client);
         }
 
-	    public static async ValueTask HandleMOTDNotFound(IrcClient client, IrcMessage message)
+	    public static void HandleMOTDNotFound(IrcClient client, IrcMessage message)
 	    {
             client.OnMOTDRecieved(new ServerMOTDEventArgs(MOTD));
             client.OnConnectionComplete(new EventArgs());
 
-            await VerifyOurIdentity(client);
+            _ = VerifyOurIdentity(client);
         }
 
-	    private static async ValueTask VerifyOurIdentity(IrcClient client)
+	    private static async Task VerifyOurIdentity(IrcClient client)
 	    {
             if (client.Settings.WhoIsOnConnect)
             {
