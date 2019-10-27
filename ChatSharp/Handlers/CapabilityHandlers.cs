@@ -34,7 +34,7 @@ namespace ChatSharp.Handlers
                                 var serverCap = sCap.Contains("=") ? sCap[0..sCap.IndexOf('=')] : sCap;
 
                                 if (serverCap == supportedCap) {
-                                    requestedCaps.Add(cap.Name);
+                                    requestedCaps.Add(serverCap);
                                     break;
                                 }
                             }
