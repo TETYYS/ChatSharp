@@ -7,7 +7,6 @@ namespace ChatSharp.Handlers
 {
     internal static class CapabilityHandlers
     {
-
         public static void HandleCapability(IrcClient client, IrcMessage message)
         {
             var serverCaps = new List<string>();
@@ -22,23 +21,14 @@ namespace ChatSharp.Handlers
                     var serverCapsString = (message.Parameters[2] == "*" ? message.Parameters[3] : message.Parameters[2]);
                     serverCaps.AddRange(serverCapsString.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries));
 
+                    serverCaps = serverCaps.Select(x => x.Contains("=") ? x[0..x.IndexOf("=")] : x).ToList();
+
                     // CAP 3.2 multiline support. Send CAP requests on the last CAP LS line.
                     // The last CAP LS line doesn't have * set as Parameters[2]
                     if (message.Parameters[2] != "*")
                     {
                         // Check which capabilities we support that the server supports
-                        foreach (var cap in supportedCaps) {
-                            var supportedCap = cap.Name.Contains("=") ? cap.Name[0..cap.Name.IndexOf('=')] : cap.Name;
-
-                            foreach (var sCap in serverCaps) {
-                                var serverCap = sCap.Contains("=") ? sCap[0..sCap.IndexOf('=')] : sCap;
-
-                                if (serverCap == supportedCap) {
-                                    requestedCaps.Add(sCap);
-                                    break;
-                                }
-                            }
-                        }
+                        requestedCaps.AddRange(supportedCaps.Select(cap => cap.Name).Intersect(serverCaps));
 
                         // Check if we have to request any capability to be enabled.
                         // If not, end the capability negotiation.
