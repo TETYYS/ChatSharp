@@ -21,7 +21,13 @@ namespace ChatSharp.Handlers
                     var serverCapsString = (message.Parameters[2] == "*" ? message.Parameters[3] : message.Parameters[2]);
                     serverCaps.AddRange(serverCapsString.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries));
 
-                    serverCaps = serverCaps.Select(x => x.Contains("=") ? x[0..x.IndexOf("=")] : x).ToList();
+                    serverCaps = serverCaps
+                        .Select(x => x
+                            .Contains("=") ? x[0..x.IndexOf("=")] : x)
+                        .Intersect(serverCaps
+                            .Select(x => x.Contains("=") ? x : null)
+                            .Where(x => x != null)
+                        ).ToList();
 
                     // CAP 3.2 multiline support. Send CAP requests on the last CAP LS line.
                     // The last CAP LS line doesn't have * set as Parameters[2]
