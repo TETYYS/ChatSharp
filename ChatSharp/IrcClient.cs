@@ -329,7 +329,7 @@ namespace ChatSharp
                 if (!RW.Reader.TryRead(out var item))
                     continue;
 
-                HandleMessage(item);
+                try { HandleMessage(item); } catch { }
             }
         }
 
