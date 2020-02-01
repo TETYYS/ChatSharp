@@ -24,9 +24,9 @@ namespace ChatSharp
             const string illegalCharacters = "\r\n\0";
             if (destinations == null || !destinations.Any()) throw new InvalidOperationException("Message must have at least one target.");
             if (illegalCharacters.Any(message.Contains)) {
-                message.Replace("\r", "\\r");
-                message.Replace("\n", "\\n");
-                message.Replace("\0", "\\0");
+                message = message.Replace("\r", "\\r");
+                message = message.Replace("\n", "\\n");
+                message = message.Replace("\0", "\\0");
             }
             string to = string.Join(",", destinations);
             _ = SendRawMessage("PRIVMSG {0} :{1}{2}", to, PrivmsgPrefix, message);
