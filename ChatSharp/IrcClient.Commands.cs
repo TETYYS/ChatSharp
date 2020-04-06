@@ -29,6 +29,11 @@ namespace ChatSharp
                 message = message.Replace("\0", "\\0");
             }
             string to = string.Join(",", destinations);
+
+            if (message.Length > 500) {
+                message = message[..500];
+            }
+
             _ = SendRawMessage("PRIVMSG {0} :{1}{2}", to, PrivmsgPrefix, message);
         }
 
