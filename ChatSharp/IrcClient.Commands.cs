@@ -30,8 +30,8 @@ namespace ChatSharp
             }
             string to = string.Join(",", destinations);
 
-            if (message.Length > 500) {
-                message = message[..500];
+            if (message.Length > 500 - to.Length - 1) {
+                message = message[..(500 - to.Length - 1)];
             }
 
             _ = SendRawMessage("PRIVMSG {0} :{1}{2}", to, PrivmsgPrefix, message);
