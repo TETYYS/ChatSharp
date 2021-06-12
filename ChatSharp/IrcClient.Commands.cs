@@ -30,11 +30,13 @@ namespace ChatSharp
             }
             string to = string.Join(",", destinations);
 
-            if (message.Length > 500 - to.Length - 2) {
-                message = message[..(500 - to.Length - 2)];
+            var toSend = $"PRIVMSG {to} :{PrivmsgPrefix}{message}";
+
+            if (toSend.Length > 510) {
+                toSend = toSend[..510];
             }
 
-            _ = SendRawMessage("PRIVMSG {0} :{1}{2}", to, PrivmsgPrefix, message);
+            _ = SendRawMessage(toSend);
         }
 
         /// <summary>
@@ -53,11 +55,13 @@ namespace ChatSharp
 
             string to = string.Join(",", destinations);
 
-            if (message.Length > 500 - to.Length - 2 - 9) {
-                message = message[..(500 - to.Length - 2 - 9)];
+            var toSend = $"PRIVMSG {to} :\x0001ACTION {PrivmsgPrefix}{message}\x0001";
+
+            if (toSend.Length > 510) {
+                toSend = toSend[..510];
             }
 
-            _ = SendRawMessage("PRIVMSG {0} :\x0001ACTION {1}{2}\x0001", to, PrivmsgPrefix, message);
+            _ = SendRawMessage(toSend);
         }
 
         /// <summary>
