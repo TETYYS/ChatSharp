@@ -16,6 +16,19 @@ namespace ChatSharp
             User.Nick = newNick;
         }
 
+        public static string LimitByteLength(string message, int maxLength)
+        {
+            if (string.IsNullOrEmpty(message) || System.Text.Encoding.UTF8.GetByteCount(message) <= maxLength)
+            {
+                return message;
+            }
+
+            var encoder = System.Text.Encoding.UTF8.GetEncoder();
+            Span<byte> buffer = stackalloc byte[maxLength];
+            encoder.Convert(message.AsSpan(), buffer, false, out _, out int bytesUsed, out _);
+            return System.Text.Encoding.UTF8.GetString(buffer[..bytesUsed]);
+        }
+
         /// <summary>
         /// Sends a message to one or more destinations (channels or users).
         /// </summary>
@@ -32,12 +45,7 @@ namespace ChatSharp
 
             var toSend = $"PRIVMSG {to} :{PrivmsgPrefix}{message}";
 
-            var utf8Len = System.Text.Encoding.UTF8.GetByteCount(toSend);
-
-            if (utf8Len > 510) {
-                var utf8 = System.Text.Encoding.UTF8.GetBytes(toSend);
-                toSend = System.Text.Encoding.UTF8.GetString(utf8[..510]);
-            }
+            toSend = LimitByteLength(toSend, 510);
 
             _ = SendRawMessage(toSend);
         }
@@ -60,12 +68,7 @@ namespace ChatSharp
 
             var toSend = $"PRIVMSG {to} :\x0001ACTION {PrivmsgPrefix}{message}\x0001";
 
-            var utf8Len = System.Text.Encoding.UTF8.GetByteCount(toSend);
-
-            if (utf8Len > 510) {
-                var utf8 = System.Text.Encoding.UTF8.GetBytes(toSend);
-                toSend = System.Text.Encoding.UTF8.GetString(utf8[..510]);
-            }
+            toSend = LimitByteLength(toSend, 510);
 
             _ = SendRawMessage(toSend);
         }
