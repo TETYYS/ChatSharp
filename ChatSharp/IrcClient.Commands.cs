@@ -32,8 +32,11 @@ namespace ChatSharp
 
             var toSend = $"PRIVMSG {to} :{PrivmsgPrefix}{message}";
 
-            if (toSend.Length > 510) {
-                toSend = toSend[..510];
+            var utf8Len = System.Text.Encoding.UTF8.GetByteCount(toSend);
+
+            if (utf8Len > 510) {
+                var utf8 = System.Text.Encoding.UTF8.GetBytes(toSend);
+                toSend = System.Text.Encoding.UTF8.GetString(utf8[..510]);
             }
 
             _ = SendRawMessage(toSend);
@@ -57,8 +60,11 @@ namespace ChatSharp
 
             var toSend = $"PRIVMSG {to} :\x0001ACTION {PrivmsgPrefix}{message}\x0001";
 
-            if (toSend.Length > 510) {
-                toSend = toSend[..510];
+            var utf8Len = System.Text.Encoding.UTF8.GetByteCount(toSend);
+
+            if (utf8Len > 510) {
+                var utf8 = System.Text.Encoding.UTF8.GetBytes(toSend);
+                toSend = System.Text.Encoding.UTF8.GetString(utf8[..510]);
             }
 
             _ = SendRawMessage(toSend);
