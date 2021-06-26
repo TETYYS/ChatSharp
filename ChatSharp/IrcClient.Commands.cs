@@ -47,7 +47,7 @@ namespace ChatSharp
 
             toSend = LimitByteLength(toSend, 510);
 
-            _ = SendRawMessage(toSend);
+            _ = SendRawMessage("{0}", toSend);
         }
 
         /// <summary>
@@ -70,7 +70,7 @@ namespace ChatSharp
 
             toSend = LimitByteLength(toSend, 510);
 
-            _ = SendRawMessage(toSend);
+            _ = SendRawMessage("{0}", toSend);
         }
 
         /// <summary>
